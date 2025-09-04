@@ -106,9 +106,10 @@
     .stat .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
     h2 { font-size: 18px; margin: 24px 0 10px; }
-    .months { display: grid; gap: 12px; }
-    @media (min-width: 900px) { .months { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-    .month { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 12px; }
+    .months { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+    /* grid-template-columns is ignored since .months is flex now; kept for backward compatibility */
+    @media (min-width: 900px) { .months { gap: 12px; } }
+    .month { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 12px; min-width: 260px; }
     .month-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
     .weekday { font-size: 10px; color: #94a3b8; text-transform: uppercase; text-align: center; }
     .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -191,6 +192,7 @@
     (function() {
       const TZ = 'Europe/Copenhagen';
       const STORAGE_KEY = 'reels-tracker-v1';
+      const MONTHS_TO_SHOW = 12; // includes current month
       const todayKey = (date = new Date()) =>
         date.toLocaleDateString('en-CA', { timeZone: TZ });
       const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
@@ -253,6 +255,9 @@
         }
       }
 
+      // Used to keep the initial view focused on the newest month
+      let didInitialAutoScroll = false;
+
       function render() {
         // Today label
         const todayStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric', timeZone: TZ });
@@ -280,7 +285,14 @@
         // Months grids
         const monthsEl = document.getElementById('months');
         monthsEl.innerHTML = '';
-        const monthDates = [0, -1, -2].map((m) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + m); return d; });
+        // Oldest -> newest (left to right), show more months with horizontal scroll
+        const monthDates = Array.from({ length: MONTHS_TO_SHOW }, (_, i) => {
+          const d = new Date();
+          d.setDate(1);
+          // Compute oldest first: (MONTHS_TO_SHOW-1) months ago up to 0 (current)
+          d.setMonth(d.getMonth() - (MONTHS_TO_SHOW - 1 - i));
+          return d;
+        });
         monthDates.forEach((monthDate) => {
           const wrap = document.createElement('div');
           wrap.className = 'month';
@@ -308,6 +320,8 @@
           wrap.appendChild(grid);
           monthsEl.appendChild(wrap);
         });
+        // Keep view focused on the newest months on first load
+        if (!didInitialAutoScroll) { monthsEl.scrollLeft = monthsEl.scrollWidth; didInitialAutoScroll = true; }
       }
 
       // Actions
@@ -335,6 +349,16 @@
 
       // Initial render
       render();
+
+      // Auto-refresh at day/month rollover and when tab becomes visible
+      let lastToday = todayKey();
+      setInterval(() => {
+        const cur = todayKey();
+        if (cur !== lastToday) { lastToday = cur; render(); }
+      }, 60000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') { render(); }
+      });
 
       // Edit panel actions
       document.getElementById('edit-good').addEventListener('click', function () {
